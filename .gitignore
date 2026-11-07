@@ -1,0 +1,7 @@
+.venv/
+browser_profile/
+bot.log
+__pycache__/
+config.json
+grid_structure.json
+enrollment_results.json
