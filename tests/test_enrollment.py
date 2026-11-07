@@ -1,9 +1,43 @@
 import unittest
 from unittest.mock import MagicMock, patch
-import main
+from ustc_bot import app as main
 
 
 class SingleEnrollmentTests(unittest.TestCase):
+    def test_student_scope_rejection_is_closed(self):
+        frame, dialog, confirm = MagicMock(), MagicMock(), MagicMock()
+        frame.page = None
+        frame.locator.return_value.all.return_value = [dialog]
+        dialog.is_visible.return_value = True
+        dialog.inner_text.return_value = '提示\n您不在可选学生范围内，如需旁听，可联系发布院系教学秘书。\n确定'
+        dialog.get_by_role.return_value.all.return_value = [confirm]
+        confirm.is_visible.return_value = True
+        self.assertEqual(main.handle_enrollment_dialogs(frame), 'rejected')
+        confirm.click.assert_called_once_with(timeout=5000)
+        confirm.wait_for.assert_called_once_with(state='hidden', timeout=5000)
+
+    def test_zero_sized_modal_container_is_still_handled(self):
+        frame, dialog, confirm = MagicMock(), MagicMock(), MagicMock()
+        frame.page = None
+        frame.locator.return_value.all.return_value = [dialog]
+        dialog.is_visible.return_value = False
+        dialog.locator.return_value.all.return_value = [confirm]
+        dialog.get_by_role.return_value.all.return_value = [confirm]
+        confirm.is_visible.return_value = True
+        dialog.inner_text.return_value = '提示 您不在可选学生范围内 确定'
+        self.assertEqual(main.handle_enrollment_dialogs(frame), 'rejected')
+        confirm.click.assert_called_once()
+
+    @patch.object(main, 'handle_enrollment_dialogs', return_value='none')
+    @patch.object(main, 'find_table')
+    @patch.object(main, 'next_page', return_value=True)
+    def test_final_verification_never_exceeds_page_limit(self, next_page, grid, dialogs):
+        grid.return_value.get_by_text.return_value.count.return_value = 0
+        with patch.object(main, 'FILTERS', {'最多遍历页数': 2}):
+            self.assertEqual(main.verify_batch(MagicMock(), [('不存在的报告', '地点')]), [])
+        self.assertEqual(grid.call_count, 2)
+        self.assertEqual(next_page.call_count, 2)  # reset to page 1, then page 2
+
     @patch('builtins.input', return_value='')
     @patch.object(main, 'notify')
     @patch.object(main, 'verify_batch', return_value=[])

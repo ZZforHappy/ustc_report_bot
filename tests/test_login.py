@@ -1,10 +1,15 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-import main
+from ustc_bot import app as main
 
 
 class LoginTests(unittest.TestCase):
+    def setUp(self):
+        credentials = patch.object(main, 'load_credentials', return_value={'student_id': 'TEST', 'password': 'test-only'})
+        self.credentials = credentials.start()
+        self.addCleanup(credentials.stop)
+
     @patch.object(main.time, 'sleep')
     @patch.object(main, 'portal_ready', side_effect=[False, True])
     def test_manual_login_is_detected_without_terminal_input(self, ready, sleep):
@@ -18,7 +23,7 @@ class LoginTests(unittest.TestCase):
     def test_click_timeout_still_checks_successful_navigation(self, ready, sleep):
         page, username, password, button = self.auth_page()
         button.first.click.side_effect = main.PWTimeout('navigation timeout')
-        with patch.object(main, 'login_fields', return_value=(page, username, password)), patch.object(main, 'CFG', {'login': {'student_id': 'TEST', 'password': 'test-only'}}):
+        with patch.object(main, 'login_fields', return_value=(page, username, password)), patch.object(main, 'CFG', {'login': {}}):
             self.assertIs(main.ensure_login(MagicMock(pages=[page])), page)
         button.first.click.assert_called_once()
 
@@ -38,6 +43,7 @@ class LoginTests(unittest.TestCase):
             self.assertIs(main.ensure_login(context), page)
         page.get_by_placeholder.assert_not_called()
         page.get_by_role.assert_not_called()
+        self.credentials.assert_not_called()
 
     def auth_page(self):
         page = MagicMock()
@@ -54,7 +60,7 @@ class LoginTests(unittest.TestCase):
     def test_fill_submit_then_verify_portal(self, ready, sleep):
         page, username, password, button = self.auth_page()
         context = MagicMock(pages=[page])
-        with patch.object(main, 'login_fields', return_value=(page, username, password)), patch.object(main, 'CFG', {'login': {'student_id': 'TEST', 'password': 'test-only'}}):
+        with patch.object(main, 'login_fields', return_value=(page, username, password)), patch.object(main, 'CFG', {'login': {}}):
             self.assertIs(main.ensure_login(context), page)
         username.fill.assert_called_once_with('TEST', timeout=5000)
         password.fill.assert_called_once_with('test-only', timeout=5000)
@@ -66,7 +72,7 @@ class LoginTests(unittest.TestCase):
     @patch.object(main, 'portal_ready', return_value=False)
     def test_no_repeated_password_submission_on_timeout(self, ready, clock, manual, sleep):
         page, username, password, button = self.auth_page()
-        with patch.object(main, 'login_fields', return_value=(page, username, password)), patch.object(main, 'CFG', {'login': {'student_id': 'TEST', 'password': 'test-only'}}):
+        with patch.object(main, 'login_fields', return_value=(page, username, password)), patch.object(main, 'CFG', {'login': {}}):
             with self.assertRaisesRegex(RuntimeError, '超时'):
                 main.ensure_login(MagicMock(pages=[page]))
         password.fill.assert_called_once()

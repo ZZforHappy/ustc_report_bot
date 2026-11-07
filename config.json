@@ -1,0 +1,25 @@
+{
+    "portal_url":  "https://yjs1.ustc.edu.cn/gsapp/sys/yjsemaphome/portal/index.do",
+    "login":  {
+                  "timeout_seconds":  120
+              },
+    "test_enroll_one":  false,
+    "batch_enroll_all":  true,
+    "dry_run":  false,
+    "scheduled_monitor":  true,
+    "interval_seconds":  30,
+    "login_only":  false,
+    "filters":  {
+                    "排除院系关键词":  [
+
+                                ],
+                    "最多遍历页数":  3,
+                    "地点":  "控制",
+                    "报告题目":  "任意",
+                    "院系":  "任意",
+                    "报告人":  "任意",
+                    "排除题目关键词":  [
+
+                                ]
+                }
+}

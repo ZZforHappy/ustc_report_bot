@@ -2,7 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from report_filters import load_filters, matches_report
+from ustc_bot.filters import load_filters, matches_report
 
 
 class FilterTests(unittest.TestCase):

@@ -1,7 +1,29 @@
+# Python environments, bytecode and test caches
 .venv/
-browser_profile/
-bot.log
+venv/
 __pycache__/
-config.json
-grid_structure.json
-enrollment_results.json
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Real credentials and browser sessions
+/credentials.json
+/browser_profile/
+.env
+.env.*
+!.env.example
+
+# Local runtime logs and enrollment history
+*.log
+/grid_structure.json
+/enrollment_results.json
+/选课日志.jsonl
+
+# Local editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# config.json and credentials.example.json are intentionally versioned.

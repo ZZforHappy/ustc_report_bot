@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import MagicMock, patch
-import main
+from ustc_bot import app as main
 
 
 class SchedulerTests(unittest.TestCase):

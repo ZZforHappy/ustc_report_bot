@@ -2,7 +2,7 @@
 import unittest
 from unittest.mock import patch
 from playwright.sync_api import sync_playwright
-import main
+from ustc_bot import app as main
 
 
 class GridTests(unittest.TestCase):
