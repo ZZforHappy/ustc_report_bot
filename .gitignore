@@ -16,6 +16,8 @@ htmlcov/
 
 # Local runtime logs and enrollment history
 *.log
+*.log.[0-9]*
+/.history-*.tmp
 /grid_structure.json
 /enrollment_results.json
 /选课日志.jsonl

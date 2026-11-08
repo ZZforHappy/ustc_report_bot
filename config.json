@@ -7,19 +7,27 @@
     "batch_enroll_all":  true,
     "dry_run":  false,
     "scheduled_monitor":  true,
-    "interval_seconds":  30,
+    "interval_seconds":  600,
     "login_only":  false,
     "filters":  {
                     "排除院系关键词":  [
 
                                 ],
                     "最多遍历页数":  3,
-                    "地点":  "控制",
+                    "地点":  "高新",
                     "报告题目":  "任意",
                     "院系":  "任意",
                     "报告人":  "任意",
                     "排除题目关键词":  [
 
                                 ]
-                }
+                },
+    "storage":  {
+                    "log_max_mb":  2,
+                    "log_backups":  2,
+                    "history_max_records":  1000,
+                    "history_keep_days":  180,
+                    "clear_browser_cache":  true
+                },
+    "console_log_mode":  "summary"
 }

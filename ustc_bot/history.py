@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 LOG = logging.getLogger('ustc')
-POPUPS = queue.Queue()
+POPUPS = queue.Queue(maxsize=20)
 _worker = None
 
 
@@ -19,7 +19,7 @@ def append_success(path, title, location, report_time, selected_at):
     with Path(path).open('a', encoding='utf-8') as stream:
         stream.write(json.dumps(record, ensure_ascii=False) + '\n')
     LOG.info('选课成功，已追加选课日志：%s | 报告时间：%s | 地点：%s | 选课时间：%s',
-             title, report_time, location, selected_at)
+             title, report_time, location, selected_at, extra={'console': True})
     return record
 
 
@@ -44,4 +44,9 @@ def show_success_popup(record):
     if _worker is None or not _worker.is_alive():
         _worker = threading.Thread(target=_popup_worker, daemon=True)
         _worker.start()
-    POPUPS.put(record)
+    try:
+        POPUPS.put_nowait(record)
+    except queue.Full:
+        # The durable history was written before this call. Do not block the
+        # scanner or accumulate notifications when a popup is left unattended.
+        LOG.warning('成功提示队列已满，本条仅保留选课日志；关闭已有弹窗可继续显示后续提示')

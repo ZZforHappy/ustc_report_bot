@@ -18,7 +18,9 @@ def load_settings(path):
     settings.setdefault('portal_url', 'https://yjs1.ustc.edu.cn/gsapp/sys/yjsemaphome/portal/index.do')
     settings.setdefault('dry_run', False)
     settings.setdefault('interval_seconds', 600)
-    for key in ('login_only', 'scheduled_monitor', 'batch_enroll_all', 'test_enroll_one', 'dry_run'):
+    if settings.get('console_log_mode', 'summary') not in ('summary', 'verbose', 'warning'):
+        raise ValueError('console_log_mode 必须是 summary、verbose 或 warning')
+    for key in ('login_only', 'scheduled_monitor', 'batch_enroll_all', 'test_enroll_one', 'dry_run', 'block_report_media'):
         if key in settings and type(settings[key]) is not bool:
             raise ValueError(f'config.json 的 {key} 必须是 true 或 false')
     if type(settings['interval_seconds']) is not int or settings['interval_seconds'] < 30:

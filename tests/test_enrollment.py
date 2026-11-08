@@ -4,6 +4,11 @@ from ustc_bot import app as main
 
 
 class SingleEnrollmentTests(unittest.TestCase):
+    def setUp(self):
+        cleanup = patch.object(main, 'cleanup_round')
+        cleanup.start()
+        self.addCleanup(cleanup.stop)
+
     def test_student_scope_rejection_is_closed(self):
         frame, dialog, confirm = MagicMock(), MagicMock(), MagicMock()
         frame.page = None

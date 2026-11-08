@@ -13,6 +13,8 @@ from urllib.parse import urlsplit
 from .filters import validate_filters, matches_report
 from .history import append_success, show_success_popup
 from .config import load_credentials, load_settings
+from .storage import storage_settings, cleanup_round
+from .logging_setup import configure_logging
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout, Error as PWError
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -52,11 +54,11 @@ def listen_for_enter():
         LOG.warning('终端输入不可用，可用 Ctrl+C 停止')
         return
     STOP_EVENT.set()
-    LOG.info('收到 Enter，正在停止检测，不再提交新的选课')
+    LOG.info('收到 Enter，正在停止检测，不再提交新的选课', extra={'console': True})
 
 
 def wait_for_report_page(context):
-    LOG.info('正在进入报告页面；若菜单未自动展开，请在浏览器打开【学术报告选课 → 未选报告】，打开后自动开始。Enter 可停止。')
+    LOG.info('正在进入报告页面；若菜单未自动展开，请在浏览器打开【学术报告选课 → 未选报告】，打开后自动开始。Enter 可停止。', extra={'console': True})
     while context.pages:
         check_stop()
         try:
@@ -167,7 +169,7 @@ def ensure_login(context):
                         manual_wait_started = True
                         deadline = max(deadline, time.monotonic() + max(30, int(auth.get('manual_timeout_seconds', 300))))
                         stage = '等待手动验证并提交登录'
-                        LOG.info('检测到验证步骤：请在浏览器填写验证码，并点击“立即登录/确认”；仅填写验证码可能不会提交。程序不会替你完成验证。')
+                        LOG.info('检测到验证步骤：请在浏览器填写验证码，并点击“立即登录/确认”；仅填写验证码可能不会提交。程序不会替你完成验证。', extra={'console': True})
                     now = time.monotonic()
                     if now - last_wait_notice >= 15:
                         last_wait_notice = now
@@ -238,7 +240,7 @@ def wait_for_manual_login(context):
     """Keep detecting portal readiness after an automatic-login failure."""
     timeout = max(30, int(CFG.get('login', {}).get('manual_timeout_seconds', 300)))
     deadline = time.monotonic() + timeout
-    LOG.info('请在浏览器完成登录；接下来 %s 秒内进入系统后将自动继续选课，无需回终端按 Enter', timeout)
+    LOG.info('请在浏览器完成登录；接下来 %s 秒内进入系统后将自动继续选课，无需回终端按 Enter', timeout, extra={'console': True})
     while time.monotonic() < deadline:
         check_stop()
         if not context.pages:
@@ -255,7 +257,7 @@ def wait_for_manual_login(context):
 
 
 def notify(message):
-    LOG.info('通知: %s', message)
+    LOG.info('通知: %s', message, extra={'console': True})
     try:
         from plyer import notification
         notification.notify(title='中科大学术报告助手', message=message[:220], timeout=10)
@@ -332,9 +334,10 @@ def parse_rows(page):
         raise RuntimeError('已识别报告网格，但缺少必要表头：' + repr(headers))
     found = []
     rows = grid_rows(table)
-    LOG.info('识别报告网格：表头 %s，数据行 %s', headers, len(rows))
+    LOG.debug('识别报告网格：表头 %s，数据行 %s', headers, len(rows))
     if not rows and pagination_state(page) and pagination_state(page)[2] > 0:
         raise RuntimeError('网格有记录但未识别数据行，请检查网格结构')
+    unique_reports = set()
     for row, cells in rows:
         if cells.count() <= max(location_idx, title_idx, action_idx, capacity_idx):
             continue
@@ -355,6 +358,9 @@ def parse_rows(page):
                 cell = cells.nth(time_idx)
                 report_time = (cell.get_attribute('title') or cell.text_content() or '').strip() or '未提供'
             key = report_key(button, title, location)
+            if key in unique_reports:
+                continue
+            unique_reports.add(key)
             details = REPORT_DETAILS.setdefault(key, {})
             details['report_time'] = report_time
             REPORT_DETAILS[(title, location)] = details
@@ -436,6 +442,15 @@ def next_page(page, first=False):
 
 
 def monitor(page, attempted=None, results=None):
+    REPORT_DETAILS.clear()
+    try:
+        return _monitor(page, attempted, results)
+    finally:
+        REPORT_DETAILS.clear()
+        cleanup_round(ROOT, CFG)
+
+
+def _monitor(page, attempted=None, results=None):
     attempted = attempted if attempted is not None else set()
     results = results if results is not None else []
     # Must start on 未选报告 tab, navigated by the user on first launch.
@@ -594,6 +609,18 @@ def verify_batch(frame, pending):
 
 
 def batch_enrollment(context, interactive=True):
+    REPORT_DETAILS.clear()
+    summary = None
+    try:
+        summary = _batch_enrollment(context, interactive)
+        return summary
+    finally:
+        # Includes rejected reports, errors and Enter/Ctrl+C interruption.
+        REPORT_DETAILS.clear()
+        cleanup_round(ROOT, CFG, context, completed=bool(summary and summary.get('scan_completed') and not summary.get('unconfirmed_count', 0)))
+
+
+def _batch_enrollment(context, interactive=True):
     attempted, results, pending = set(), [], []
     frame = None
     completed = False
@@ -639,7 +666,7 @@ def batch_enrollment(context, interactive=True):
                 if status == 'rejected':
                     pending.remove((title, location))
                     results.append(('rejected', title, location))
-                    LOG.warning('明确拒绝，跳过：%s', title)
+                    LOG.info('明确拒绝，跳过：%s', title)
                 frame.wait_for_timeout(1000)
             if page_number == scan_limit:
                 LOG.info('已处理配置指定的前 %s 页，停止翻页', scan_limit)
@@ -673,7 +700,7 @@ def batch_enrollment(context, interactive=True):
         if interactive or successful or summary['unconfirmed_count']:
             notify(message)
         else:
-            LOG.info(message)
+            LOG.info(message, extra={'console': True})
     return summary
 
 
@@ -688,8 +715,9 @@ def scheduled_monitor(context):
         if not summary['scan_completed'] or summary['unconfirmed_count']:
             notify('定时监测已停止：本轮未完整完成或有未确认报名，请人工检查后重新启动')
             return
+        del summary
         next_run = datetime.now(SHANGHAI) + timedelta(seconds=interval)
-        LOG.info('本轮结束，下次扫描时间：%s', next_run.strftime('%Y-%m-%d %H:%M:%S %z'))
+        LOG.info('本轮结束，下次扫描时间：%s', next_run.strftime('%Y-%m-%d %H:%M:%S %z'), extra={'console': True})
         deadline = time.monotonic() + interval
         while time.monotonic() < deadline:
             check_stop()
@@ -745,12 +773,29 @@ def test_enrollment(context):
         notify('试选已停止，请检查浏览器和 bot.log，确认是否已选上')
 
 
+def route_lightweight_resources(route):
+    request = route.request
+    try:
+        frame_url = urlsplit(request.frame.url)
+        # Never filter authentication/captcha pages. Keep CSS, scripts and fonts.
+        portal = (frame_url.hostname == 'yjs1.ustc.edu.cn' and
+                  '/dbLogin/' not in frame_url.path and
+                  '/login' not in frame_url.path.lower())
+        if portal and request.resource_type in ('image', 'media'):
+            route.abort()
+        else:
+            route.continue_()
+    except PWError:
+        route.continue_()
+
+
 def run_main():
     with sync_playwright() as p:
         context = p.chromium.launch_persistent_context(
             user_data_dir=str(ROOT / 'browser_profile'),
             headless=False, channel='msedge', accept_downloads=False,
             chromium_sandbox=True,
+            args=['--disk-cache-size=33554432', '--media-cache-size=16777216'],
         )
         page = context.pages[0] if context.pages else context.new_page()
         try:
@@ -767,10 +812,13 @@ def run_main():
                 return
         LOG.info('登录流程完成，准备进入选课页面（仅登录模式=%s，定时监测=%s）',
                  CFG.get('login_only', True), CFG.get('scheduled_monitor', False))
+        if CFG.get('block_report_media', False):
+            context.route('**/*', route_lightweight_resources)
+            LOG.info('已启用报告页面图片/媒体过滤，认证页面保持加载')
         if CFG.get('login_only', True):
             print('登录成功，当前为仅登录模式，不执行选课。')
             try:
-                LOG.info('仅登录模式，按 Enter 关闭程序')
+                LOG.info('仅登录模式，按 Enter 关闭程序', extra={'console': True})
                 while not STOP_EVENT.wait(0.5):
                     pass
             finally:
@@ -825,21 +873,21 @@ def run_main():
 
 def main():
     global CFG, FILTERS
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s',
-                        handlers=[logging.StreamHandler(), logging.FileHandler(ROOT / 'bot.log', encoding='utf-8')])
     try:
         CFG = load_settings(ROOT / 'config.json')
         FILTERS = validate_filters(CFG['filters'])
+        storage = storage_settings(CFG)
     except ValueError as exc:
-        LOG.error('%s', exc)
+        print(str(exc))
         return
+    configure_logging(ROOT, storage, CFG.get('console_log_mode', 'summary'))
     STOP_EVENT.clear()
-    LOG.info('程序启动后自动登录并开始检测；在运行终端按 Enter 停止（Ctrl+C 也可）')
+    LOG.info('程序启动后自动登录并开始检测；在运行终端按 Enter 停止（Ctrl+C 也可）', extra={'console': True})
     threading.Thread(target=listen_for_enter, daemon=True).start()
     try:
         run_main()
     except (StopRequested, KeyboardInterrupt):
-        LOG.info('检测已停止')
+        LOG.info('检测已停止', extra={'console': True})
 
 
 if __name__ == '__main__':
